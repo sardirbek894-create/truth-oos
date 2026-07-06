@@ -1,0 +1,205 @@
+# =====================================================
+# Olympus Engine v9 — .gitignore
+# =====================================================
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+olympus-venv/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Mypy / lint
+.mypy_cache/
+.ruff_cache/
+.bandit/
+.interrogate/
+
+# Type stubs
+typings/
+
+# ---------- Node / TypeScript / React ----------
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+.yarn-error.yml
+.pnpm-debug.log*
+
+# Build outputs
+frontend/dist/
+frontend/build/
+frontend/.next/
+frontend/.parcel-cache/
+frontend/coverage/
+
+# Cache
+.eslintcache
+.stylelintcache
+
+# ---------- Secrets (NEVER COMMIT) ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+*.keystore
+secrets.yml
+secrets.yaml
+secrets.json
+**/secrets/**
+**/credentials/**
+**/.vault-token
+**/.netrc
+**/id_rsa*
+**/id_ed25519*
+**/id_dsa*
+
+# HSM
+**/hsm/*.bin
+**/pkcs11.cfg
+
+# Vault
+.vault/
+**/vault.json
+
+# ---------- Infrastructure ----------
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+
+# Ansible
+*.retry
+**/vault.yml
+**/vault.yaml
+roles/*/files/
+
+# ---------- IDEs / editors ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+.factorypath
+
+# Cursor / Trae
+.cursor/
+.trae/
+
+# ---------- OS ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ---------- Logs ----------
+*.log
+*.log.*
+logs/
+!backend/app/**/logs/*.log  # keep structured app logs
+journald/
+
+# ---------- Data / caches ----------
+data/
+cache/
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.pid
+*.sock
+
+# ---------- ML / model artifacts ----------
+*.onnx
+*.pt
+*.pth
+*.h5
+*.tflite
+*.pb
+!backend/app/models/manifests/*.json  # keep manifests, not weights
+
+# ---------- Test artifacts ----------
+.artifacts/
+.playwright/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+.jmeter/
+__screenshots__/
+
+# ---------- Coverage / CI ----------
+*.lcov
+sonar-project.properties.bak
+codecov.yml.bak
+
+# ---------- Docker ----------
+docker-compose.override.yml
+**/.docker/
+
+# ---------- K8s / Helm ----------
+charts/*/charts/
+*.tgz
+
+# ---------- Generated ----------
+**/__pycache__/
+**/node_modules/
+**/.pytest_cache/
+**/htmlcov/
+**/.coverage
+**/dist/
+**/build/
+**/.next/
+**/coverage/

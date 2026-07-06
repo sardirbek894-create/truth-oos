@@ -1,0 +1,96 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: "olympus-prod"
+    replica: "{{.ExternalURL}}"
+
+remote_write:
+  - url: "http://minio.olympus.internal:9000/api/v1/receive"
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+
+scrape_configs:
+  - job_name: 'olympus-backend'
+    scrape_interval: 5s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['app-1:8000', 'app-2:8000', 'app-3:8000']
+        labels:
+          service: "api"
+          tier: "backend"
+
+  - job_name: 'olympus-workers'
+    file_sd_configs:
+      - files:
+        - '/etc/prometheus/file-sd/workers.json'
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['app-1:9100', 'app-2:9100', 'app-3:9100', 'db-1:9100', 'db-2:9100', 'etcd-1:9100', 'etcd-2:9100', 'etcd-3:9100', 'redis-1:9100', 'redis-2:9100', 'redis-3:9100', 'nginx-1:9100', 'nginx-2:9100', 'monitor-1:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+):\d+'
+        target_label: instance
+        replacement: '${1}'
+
+  - job_name: 'etcd'
+    metrics_path: '/metrics'
+    scheme: https
+    tls_config:
+      ca_file: '/etc/prometheus/certs/ca.crt'
+      cert_file: '/etc/prometheus/certs/client.crt'
+      key_file: '/etc/prometheus/certs/client.key'
+    static_configs:
+      - targets: ['etcd-1:2379', 'etcd-2:2379', 'etcd-3:2379']
+
+  - job_name: 'patroni'
+    static_configs:
+      - targets: ['db-1:8008', 'db-2:8008']
+
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['db-1:9187', 'db-2:9187']
+
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-1:9121', 'redis-2:9121', 'redis-3:9121']
+
+  - job_name: 'redis-sentinel'
+    static_configs:
+      - targets: ['redis-1:26379', 'redis-2:26379', 'redis-3:26379']
+
+  - job_name: 'nvidia-dcgm'
+    static_configs:
+      - targets: ['app-1:9400', 'app-2:9400', 'app-3:9400']
+
+  - job_name: 'pgbouncer'
+    static_configs:
+      - targets: ['db-1:6432', 'db-2:6432']
+
+  - job_name: 'openresty'
+    static_configs:
+      - targets: ['nginx-1:9145', 'nginx-2:9145']
+
+  - job_name: 'keepalived'
+    static_configs:
+      - targets: ['nginx-1:9650', 'nginx-2:9650']
+
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - https://api.olympus.engine/health
+        - https://olympus.engine/
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 127.0.0.1:9115
+    scrape_interval: 10s
+# VERIFIED: Global intervals, remote_write settings, and 13 scrape configs as per spec.

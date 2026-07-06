@@ -1,0 +1,27 @@
+---
+- name: Add OpenResty APT repository
+  apt_repository:
+    repo: "deb [arch=amd64] http://openresty.org/package/ubuntu {{ ansible_distribution_release }} main"
+    state: present
+
+- name: Install OpenResty
+  apt:
+    name:
+      - openresty
+      - openresty-opm
+    state: present
+    update_cache: yes
+
+- name: Create OpenResty directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0755'
+  loop:
+    - /etc/openresty
+    - /etc/openresty/lua
+    - /etc/openresty/upstreams
+    - /etc/openresty/snippets
+    - /var/log/openresty

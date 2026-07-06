@@ -1,0 +1,23 @@
+[Unit]
+Description=Olympus rPPG Worker (GPU %i)
+After=olympus-backend-blue.service olympus-backend-green.service
+Wants=olympus-backend-blue.service
+
+[Service]
+Type=simple
+User=olympus
+Group=olympus
+WorkingDirectory=/opt/olympus/current
+Environment="PATH=/opt/olympus/current/.venv/bin"
+Environment="CUDA_VISIBLE_DEVICES=%i"
+Environment="WORKER_TYPE=rppg"
+ExecStart=/opt/olympus/current/.venv/bin/python -m app.workers.rppg_worker
+Restart=always
+RestartSec=5
+CPUQuota=100%
+MemoryMax=1G
+TasksMax=50
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target

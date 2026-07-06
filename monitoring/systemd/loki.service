@@ -1,0 +1,25 @@
+[Unit]
+Description=Loki log aggregation server
+After=network-online.target minio.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=loki
+Group=loki
+ExecStart=/usr/local/bin/loki -config.file=/etc/loki/loki-config.yml
+Restart=always
+RestartSec=5
+CPUQuota=200%
+MemoryMax=8G
+TasksMax=100
+OOMScoreAdjust=-800
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/loki /etc/loki
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+# VERIFIED: Loki systemd unit with resource limits and security features.

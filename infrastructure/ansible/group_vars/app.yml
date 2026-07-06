@@ -1,0 +1,18 @@
+---
+cuda_version: "12.2"
+nvidia_driver: "535"
+python_version: "3.11"
+gpu_mapping:
+  blue: "0"
+  green: "1"
+  liveness: "0"
+  rppg: "1"
+systemd_limits:
+  cpu_quota: "150%"
+  memory_max: "2G"
+  tasks_max: "100"
+  oom_score_adjust: "-1000"
+  restart: "always"
+  restart_sec: "5"
+upstream_blue: 8001
+upstream_green: 8002

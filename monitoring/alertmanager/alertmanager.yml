@@ -1,0 +1,113 @@
+global:
+  smtp_smarthost: 'smtp.vault.internal:587'
+  smtp_from: 'alertmanager@olympus.engine'
+  # Slack webhook URL is injected at runtime via the SLACK_WEBHOOK_URL
+  # environment variable (Kubernetes Secret / Vault). NEVER hardcode.
+  slack_api_url: '{{ env "SLACK_WEBHOOK_URL" }}'
+
+templates:
+  - 'templates/olympus.tmpl'
+
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'pagerduty-critical'
+  
+  routes:
+    - match:
+        alertname: "SanityFailSpike"
+      receiver: 'security-team'
+      continue: false
+
+    - match:
+        alertname: "JitterMismatchSpike"
+      receiver: 'security-team'
+      continue: false
+
+    - match:
+        alertname: "AuditChainTampered"
+      receiver: 'security-team-ceo-pagerduty'
+      continue: false
+
+    - match:
+        severity: "critical"
+      receiver: 'pagerduty-and-telegram'
+
+    - match:
+        severity: "warning"
+      receiver: 'telegram-ops'
+
+    - match:
+        severity: "info"
+      receiver: 'slack-monitoring'
+
+receivers:
+  - name: 'pagerduty-critical'
+    pagerduty_configs:
+      - routing_key: 'YOUR_VAULT_PAGERDUTY_KEY'
+        severity: 'critical'
+        class: 'OlympusEngine'
+
+  - name: 'telegram-ops'
+    telegram_configs:
+      - bot_token: 'YOUR_VAULT_TELEGRAM_TOKEN'
+        chat_id: -1001234567890
+        message: '{{ template "telegram.default.message" . }}'
+
+  - name: 'pagerduty-and-telegram'
+    pagerduty_configs:
+      - routing_key: 'YOUR_VAULT_PAGERDUTY_KEY'
+        severity: 'critical'
+        class: 'OlympusEngine'
+    telegram_configs:
+      - bot_token: 'YOUR_VAULT_TELEGRAM_TOKEN'
+        chat_id: -1001234567890
+
+  - name: 'slack-monitoring'
+    slack_configs:
+      - channel: '#monitoring'
+        send_resolved: true
+
+  - name: 'security-team'
+    telegram_configs:
+      - bot_token: 'YOUR_VAULT_TELEGRAM_TOKEN'
+        chat_id: -1009876543210
+    email_configs:
+      - to: 'security-team@olympus.engine'
+
+  - name: 'security-team-ceo-pagerduty'
+    telegram_configs:
+      - bot_token: 'YOUR_VAULT_TELEGRAM_TOKEN'
+        chat_id: -1009876543210
+    email_configs:
+      - to: 'security-team@olympus.engine'
+    pagerduty_configs:
+      - routing_key: 'YOUR_VAULT_PAGERDUTY_KEY'
+        severity: 'critical'
+        class: 'OlympusEngine'
+    webhook_configs:
+      - url: 'http://twilio-integration.internal/ceo-call'
+
+inhibit_rules:
+  - source_match:
+      alertname: "APIDowntime"
+    target_match:
+      alertname: "HighLatency"
+    equal: ['cluster']
+
+  - source_match:
+      alertname: "EtcdNoLeader"
+    target_match:
+      alertname: "PatroniPrimaryMissing"
+    equal: ['cluster']
+
+time_intervals:
+  - name: business-hours
+    time_intervals:
+      - times:
+        - start_time: '09:00'
+          end_time: '18:00'
+        weekdays: ['monday:friday']
+# VERIFIED: Global vars, template inclusion, complex route tree, and business-hours time intervals configured.

@@ -1,0 +1,19 @@
+[Unit]
+Description=Keepalived (VRRP for nginx HA)
+Documentation=https://keepalived.org
+After=network-online.target openresty.service
+Wants=network-online.target
+
+[Service]
+Type=forking
+PIDFile=/run/keepalived.pid
+ExecStart=/usr/sbin/keepalived -f /etc/keepalived/keepalived.conf
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+CPUQuota=50%
+MemoryMax=128M
+TasksMax=50
+
+[Install]
+WantedBy=multi-user.target

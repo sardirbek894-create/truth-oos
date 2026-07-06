@@ -1,0 +1,29 @@
+[Unit]
+Description=etcd distributed key-value store
+Documentation=https://etcd.io
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=etcd
+Group=etcd
+ExecStart=/usr/bin/etcd --config-file /etc/etcd/etcd.conf.yml
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+CPUQuota=100%
+MemoryMax=512M
+TasksMax=100
+OOMScoreAdjust=-900
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/etcd
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

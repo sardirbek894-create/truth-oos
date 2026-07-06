@@ -1,0 +1,25 @@
+name: "{{ etcd_name }}"
+data-dir: /var/lib/etcd
+listen-client-urls: "https://{{ ansible_host }}:2379,https://127.0.0.1:2379"
+advertise-client-urls: "https://{{ ansible_host }}:2379"
+listen-peer-urls: "https://{{ ansible_host }}:2380"
+initial-advertise-peer-urls: "https://{{ etcd_name }}:2380"
+initial-cluster: "etcd1=https://etcd1:2380,etcd2=https://etcd2:2380,etcd3=https://etcd3:2380"
+initial-cluster-token: "olympus-etcd-cluster"
+initial-cluster-state: "new"
+client-transport-security:
+  cert-file: /etc/etcd/certs/server.crt
+  key-file: /etc/etcd/certs/server.key
+  client-cert-auth: true
+  trusted-ca-file: /etc/etcd/certs/ca.crt
+  auto-tls: false
+peer-transport-security:
+  cert-file: /etc/etcd/certs/peer.crt
+  key-file: /etc/etcd/certs/peer.key
+  client-cert-auth: true
+  trusted-ca-file: /etc/etcd/certs/ca.crt
+  auto-tls: false
+heartbeat-interval: 100
+election-timeout: 1000
+snapshot-count: 10000
+quota-backend-bytes: 8589934592

@@ -1,0 +1,37 @@
+{
+  "title": "Olympus Engine — HA Cluster",
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "etcd Member Health",
+      "targets": [
+        {"expr": "etcd_server_has_leader"},
+        {"expr": "etcd_network_peer_round_trip_time_seconds"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Patroni Timeline",
+      "targets": [
+        {"expr": "patroni_postgres_running"},
+        {"expr": "patroni_replica_lag"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis Failover History",
+      "targets": [{"expr": "redis_master_link_up"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Nginx Active Connections",
+      "targets": [{"expr": "nginx_http_connections{state=\"active\"}"}]
+    },
+    {
+      "type": "stat",
+      "title": "Deploy Status",
+      "targets": [{"expr": "bluegreen_state{active=~\"blue|green\"}"}]
+    }
+  ]
+}

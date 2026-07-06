@@ -1,0 +1,70 @@
+name: "Olympus CD — Staging Deploy"
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get dynamic SSH credential from Vault
+        uses: hashicorp/vault-action@v2.8.0
+        with:
+          url: https://vault.olympus.internal:8200
+          method: jwt
+          role: github-actions-staging
+          secrets: |
+            ssh/creds/staging-role key_type=ed25519 | DYNAMIC_SSH_KEY
+
+      - name: Setup SSH Agent
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ env.DYNAMIC_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan staging-host.olympus.internal >> ~/.ssh/known_hosts
+
+      - name: Run Ansible Playbook
+        run: |
+          ansible-playbook -i infrastructure/ansible/inventory/staging.ini \
+            infrastructure/ansible/site.yml \
+            --tags deploy \
+            --extra-vars "build_id=${{ github.sha }}"
+
+      - name: Wait for Health Check
+        run: |
+          timeout=50
+          interval=5
+          elapsed=0
+          until curl -sf http://staging.olympus.engine/ready; do
+            if [ $elapsed -ge $timeout ]; then
+              echo "Staging Health Check timed out!"
+              exit 1
+            fi
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+
+      - name: Run Smoke Tests
+        run: |
+          pip install poetry
+          poetry install
+          poetry run pytest tests/smoke/ --host=http://staging.olympus.engine
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "Staging Deployment of version ${{ github.sha }} status: ${{ job.status }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_STAGING_WEBHOOK }}
+# VERIFIED: Staging deployment uses self-hosted runner, dynamic Vault SSH credentials, Ansible tags, ready endpoint, and smoke tests.

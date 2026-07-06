@@ -1,0 +1,31 @@
+[Unit]
+Description=OpenResty (nginx + Lua)
+Documentation=https://openresty.org
+After=network-online.target step-ca.service
+Wants=network-online.target step-ca.service
+
+[Service]
+Type=forking
+PIDFile=/run/openresty.pid
+ExecStartPre=/usr/sbin/openresty -t
+ExecStart=/usr/sbin/openresty
+ExecReload=/usr/sbin/openresty -s reload
+ExecStop=/bin/kill -s QUIT $MAINPID
+Restart=always
+RestartSec=5
+CPUQuota=100%
+MemoryMax=512M
+TasksMax=100
+OOMScoreAdjust=-900
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/openresty /var/cache/openresty
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

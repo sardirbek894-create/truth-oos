@@ -1,0 +1,31 @@
+{
+  "title": "Olympus Engine — Security Audit",
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Audit Chain Integrity",
+      "targets": [{"expr": "audit_chain_integrity_status"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "GDPR Erasure Queue",
+      "targets": [{"expr": "gdpr_erasure_queue_depth"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Key Rotation Timeline",
+      "targets": [{"expr": "hsm_key_rotation_timestamp"}]
+    },
+    {
+      "type": "stat",
+      "title": "Certificate Expiry",
+      "targets": [{"expr": "(step_ca_cert_not_after - time()) / 86400"}]
+    },
+    {
+      "type": "heatmap",
+      "title": "Failed Logins",
+      "targets": [{"expr": "rate(nginx_http_requests_total{status=\"401\"}[5m])"}]
+    }
+  ]
+}

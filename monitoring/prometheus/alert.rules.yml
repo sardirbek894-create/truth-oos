@@ -1,0 +1,576 @@
+groups:
+- name: olympus_api
+  interval: 15s
+  rules:
+  - alert: HighErrorRate
+    expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.01
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Warning API Error Rate"
+      description: "API error rate is > 1% for 2m"
+      runbook_url: "https://runbooks.olympus.internal/HighErrorRate"
+      impact: "Some user requests are failing."
+      cause: "Intermittent backend issues or partial DB slowdown."
+      auto_remediation: "None"
+
+  - alert: HighErrorRateCritical
+    expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Critical API Error Rate"
+      description: "API error rate is > 5% for 1m"
+      runbook_url: "https://runbooks.olympus.internal/HighErrorRate"
+      impact: "User requests are failing, possible revenue loss."
+      cause: "Backend crash, DB issue, or deployment regression."
+      auto_remediation: "Scale up backend pods or rollback deployment."
+
+  - alert: HighLatency
+    expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Warning API Latency"
+      description: "API p99 latency > 0.5s for 3m"
+      runbook_url: "https://runbooks.olympus.internal/HighLatency"
+      impact: "Noticeable user experience degradation."
+      cause: "Increased load or inefficient queries."
+      auto_remediation: "None"
+
+  - alert: HighLatencyCritical
+    expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 2.0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Critical API Latency"
+      description: "API p99 latency > 2.0s for 1m"
+      runbook_url: "https://runbooks.olympus.internal/HighLatency"
+      impact: "Severe user experience degradation."
+      cause: "DB locks, slow queries, or GPU inference bottleneck."
+      auto_remediation: "Restart slow backend instances."
+
+  - alert: LatencySpike
+    expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 2 * avg_over_time(histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))[1h])
+    for: 5m
+    labels:
+      severity: info
+    annotations:
+      summary: "API Latency Anomaly Detected"
+      description: "Latency is twice the 1h baseline for 5m"
+      runbook_url: "https://runbooks.olympus.internal/LatencySpike"
+      impact: "Potential emerging issue."
+      cause: "Traffic shift, cache miss storm."
+      auto_remediation: "None"
+
+  - alert: JitterMismatchSpike
+    expr: rate(jitter_mismatch_total[5m]) > 0.01
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High Jitter Mismatch"
+      description: "Attack indicator: Jitter mismatch > 0.01 for 1m"
+      runbook_url: "https://runbooks.olympus.internal/SecuritySpike"
+      impact: "Potential targeted attack."
+      cause: "Malicious actors probing verifier boundaries."
+      auto_remediation: "Block IP ranges."
+
+  - alert: SanityFailSpike
+    expr: rate(sanity_fail_total[5m]) > 10
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High Sanity Check Failures"
+      description: "Possible injection attack: Sanity fails > 10 for 1m"
+      runbook_url: "https://runbooks.olympus.internal/SecuritySpike"
+      impact: "Potential injection attack attempt."
+      cause: "Malicious payload detected."
+      auto_remediation: "WAF rule block."
+
+  - alert: RateLimitHit
+    expr: rate(nginx_http_requests_total{status="444"}[5m]) > 100
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Rate Limiting Tripped"
+      description: "DDoS or misconfigured client: 444s > 100/s for 5m"
+      runbook_url: "https://runbooks.olympus.internal/RateLimit"
+      impact: "Client connections being dropped."
+      cause: "DDoS attempt or runaway script."
+      auto_remediation: "None"
+
+  - alert: APIDowntime
+    expr: up{job="olympus-backend"} == 0
+    for: 10s
+    labels:
+      severity: critical
+    annotations:
+      summary: "API Backend Down"
+      description: "Backend instances are unreachable for 10s"
+      runbook_url: "https://runbooks.olympus.internal/APIDown"
+      impact: "Total API outage."
+      cause: "Service crash or network partition."
+      auto_remediation: "Restart systemd unit."
+
+- name: olympus_ha_cluster
+  interval: 10s
+  rules:
+  - alert: EtcdNoLeader
+    expr: etcd_server_has_leader{job="etcd"} == 0
+    for: 10s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Etcd Cluster Leader Missing"
+      description: "Etcd has no leader for 10s"
+      runbook_url: "https://runbooks.olympus.internal/EtcdDown"
+      impact: "Cluster control plane down."
+      cause: "Network split or multiple node failures."
+      auto_remediation: "None"
+
+  - alert: EtcdHighFsyncDuration
+    expr: histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) > 0.5
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Etcd Slow Disk Fsync"
+      description: "WAL fsync > 0.5s for 2m"
+      runbook_url: "https://runbooks.olympus.internal/EtcdPerformance"
+      impact: "Slower cluster operations."
+      cause: "Disk IO bottleneck."
+      auto_remediation: "None"
+
+  - alert: EtcdQuorumAtRisk
+    expr: etcd_server_is_leader == 1 and etcd_server_proposals_committed_total - etcd_server_proposals_applied_total > 100
+    for: 30s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Etcd Quorum At Risk"
+      description: "Leader committed >100 proposals more than applied for 30s"
+      runbook_url: "https://runbooks.olympus.internal/EtcdQuorum"
+      impact: "Cluster instability, potential split brain."
+      cause: "Nodes falling behind."
+      auto_remediation: "None"
+
+  - alert: PatroniPrimaryMissing
+    expr: patroni_postgres_running{role="master"} == 0
+    for: 15s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Patroni Primary Down"
+      description: "No Postgres master found for 15s"
+      runbook_url: "https://runbooks.olympus.internal/PatroniDown"
+      impact: "Database writes failing."
+      cause: "Master crash, failover in progress."
+      auto_remediation: "Patroni should auto-failover."
+
+  - alert: PatroniReplicaLag
+    expr: patroni_replica_lag > 5
+    for: 30s
+    labels:
+      severity: warning
+    annotations:
+      summary: "Patroni Replica Lag Warning"
+      description: "Replica lag > 5s for 30s"
+      runbook_url: "https://runbooks.olympus.internal/PatroniLag"
+      impact: "Minor stale reads."
+      cause: "Write bursts."
+      auto_remediation: "None"
+
+  - alert: PatroniReplicaLagCritical
+    expr: patroni_replica_lag > 30
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Patroni Replica Lag Critical"
+      description: "Replica lag > 30s for 1m"
+      runbook_url: "https://runbooks.olympus.internal/PatroniLag"
+      impact: "Stale reads, data loss risk on failover."
+      cause: "Heavy write load or replica issue."
+      auto_remediation: "None"
+
+  - alert: PatroniFailoverDetected
+    expr: changes(patroni_postgres_running{role="master"}[5m]) > 0
+    labels:
+      severity: info
+    annotations:
+      summary: "Patroni Failover Occurred"
+      description: "Postgres master role changed in last 5m"
+      runbook_url: "https://runbooks.olympus.internal/PatroniFailover"
+      impact: "Brief connection drops."
+      cause: "Master node failure."
+      auto_remediation: "Trigger post-failover checks."
+
+  - alert: RedisMasterMissing
+    expr: redis_connected_slaves{role="master"} < 1
+    for: 15s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Redis Master Down"
+      description: "No connected slaves to Redis master for 15s"
+      runbook_url: "https://runbooks.olympus.internal/RedisDown"
+      impact: "Caching layer writes failing."
+      cause: "Redis master crash."
+      auto_remediation: "Sentinel should auto-failover."
+
+  - alert: RedisSentinelNoMaster
+    expr: redis_sentinel_masters{state="ok"} == 0
+    for: 10s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Redis Sentinel Master Unknown"
+      description: "Sentinel sees no OK masters for 10s"
+      runbook_url: "https://runbooks.olympus.internal/RedisSentinel"
+      impact: "Failover capability lost."
+      cause: "Network partition or master down."
+      auto_remediation: "None"
+
+  - alert: RedisReplicationLag
+    expr: redis_master_last_io_seconds_ago > 10
+    for: 30s
+    labels:
+      severity: warning
+    annotations:
+      summary: "Redis Replication Lag"
+      description: "Replica IO > 10s ago for 30s"
+      runbook_url: "https://runbooks.olympus.internal/RedisLag"
+      impact: "Stale cache reads."
+      cause: "Network issues or heavy load."
+      auto_remediation: "None"
+
+  - alert: KeepalivedVipMissing
+    expr: keepalived_vip_status{state="MASTER"} == 0
+    for: 5s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Keepalived VIP Missing"
+      description: "No node holds the VIP for 5s"
+      runbook_url: "https://runbooks.olympus.internal/VipDown"
+      impact: "Total ingress failure."
+      cause: "All nginx nodes down or keepalived failure."
+      auto_remediation: "None"
+
+  - alert: KeepalivedSplitBrain
+    expr: sum(keepalived_vip_status{state="MASTER"}) > 1
+    for: 10s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Keepalived Split Brain"
+      description: "Multiple nodes claim VIP for 10s"
+      runbook_url: "https://runbooks.olympus.internal/VipSplitBrain"
+      impact: "Routing instability, potential loops."
+      cause: "Network partition between Nginx nodes."
+      auto_remediation: "Force drop VIP on secondary."
+
+- name: olympus_database
+  interval: 15s
+  rules:
+  - alert: PgBouncerPoolExhausted
+    expr: pgbouncer_pools_cl_waiting / pgbouncer_pools_cl_max > 0.9
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "PgBouncer Pool Exhausted"
+      description: "Pool > 90% full for 1m"
+      runbook_url: "https://runbooks.olympus.internal/PgBouncerPool"
+      impact: "DB connections dropping."
+      cause: "Connection leak or query pileup."
+      auto_remediation: "None"
+
+  - alert: PgBouncerConnectionTimeout
+    expr: pgbouncer_stats_server_bytes_sent > 0 and pgbouncer_pools_cl_waiting > 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "PgBouncer Connection Wait"
+      description: "Clients waiting for DB connections for 2m"
+      runbook_url: "https://runbooks.olympus.internal/PgBouncerTimeout"
+      impact: "Increased latency."
+      cause: "Insufficient pool size."
+      auto_remediation: "None"
+
+  - alert: PostgreSQLConnectionsNearLimit
+    expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Postgres Connections High"
+      description: "Connections > 80% of max for 5m"
+      runbook_url: "https://runbooks.olympus.internal/PgConnections"
+      impact: "Risk of connection rejection."
+      cause: "Leaked connections."
+      auto_remediation: "None"
+
+  - alert: PostgreSQLSlowQueries
+    expr: pg_stat_statements_mean_time > 1000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Postgres Slow Queries"
+      description: "Mean query time > 1s for 5m"
+      runbook_url: "https://runbooks.olympus.internal/PgSlowQueries"
+      impact: "System slowdown."
+      cause: "Missing indexes, heavy analytical queries."
+      auto_remediation: "None"
+
+  - alert: PostgreSQLVacuumLag
+    expr: pg_stat_user_tables_n_dead_tup > 1000000
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Postgres Vacuum Lag"
+      description: "> 1M dead tuples for 10m"
+      runbook_url: "https://runbooks.olympus.internal/PgVacuum"
+      impact: "Query performance degradation."
+      cause: "Autovacuum unable to keep up."
+      auto_remediation: "None"
+
+  - alert: PostgreSQLReplicationSlotInactive
+    expr: pg_replication_slots_active == 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Postgres Replication Slot Inactive"
+      description: "Replication slot inactive for 5m"
+      runbook_url: "https://runbooks.olympus.internal/PgReplicationSlot"
+      impact: "WAL buildup on primary, disk full risk."
+      cause: "Replica disconnected."
+      auto_remediation: "None"
+
+- name: olympus_gpu
+  interval: 10s
+  rules:
+  - alert: GPUOOMRisk
+    expr: dcgm_gpu_memory_used / dcgm_gpu_memory_total > 0.95
+    for: 30s
+    labels:
+      severity: critical
+    annotations:
+      summary: "GPU OOM Risk"
+      description: "GPU Memory > 95% for 30s"
+      runbook_url: "https://runbooks.olympus.internal/GPUOOM"
+      impact: "Inference process crashes."
+      cause: "Model batch size too large."
+      auto_remediation: "Restart model server."
+
+  - alert: GPUOverheating
+    expr: dcgm_gpu_temp > 85
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "GPU Overheating Warning"
+      description: "GPU temp > 85C for 2m"
+      runbook_url: "https://runbooks.olympus.internal/GPUThermal"
+      impact: "Potential future throttling."
+      cause: "High sustained load."
+      auto_remediation: "None"
+
+  - alert: GPUOverheatingCritical
+    expr: dcgm_gpu_temp > 95
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "GPU Overheating Critical"
+      description: "GPU temp > 95C for 1m"
+      runbook_url: "https://runbooks.olympus.internal/GPUThermal"
+      impact: "Thermal throttling, hardware damage risk."
+      cause: "Cooling failure."
+      auto_remediation: "Drain traffic from node."
+
+  - alert: GPUXidError
+    expr: dcgm_gpu_xid_errors > 0
+    for: 0s
+    labels:
+      severity: critical
+    annotations:
+      summary: "GPU Xid Error"
+      description: "Hardware error detected on GPU"
+      runbook_url: "https://runbooks.olympus.internal/GPUXid"
+      impact: "Corrupted inference or crashes."
+      cause: "Hardware fault."
+      auto_remediation: "Cordon node."
+
+  - alert: GPUUtilizationLow
+    expr: dcgm_gpu_utilization < 10
+    for: 30m
+    labels:
+      severity: info
+    annotations:
+      summary: "GPU Utilization Low"
+      description: "GPU utilization < 10% for 30m"
+      runbook_url: "https://runbooks.olympus.internal/GPUUnderutilization"
+      impact: "Wasted capacity."
+      cause: "Low traffic or stuck worker."
+      auto_remediation: "None"
+
+  - alert: GPUInferenceLatencyHigh
+    expr: histogram_quantile(0.99, rate(gpu_inference_duration_seconds_bucket[5m])) > 0.05
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "GPU Inference Latency High"
+      description: "p99 inference latency > 50ms for 5m"
+      runbook_url: "https://runbooks.olympus.internal/GPULatency"
+      impact: "API latency increase."
+      cause: "PCIe bottleneck or model complexity."
+      auto_remediation: "None"
+
+- name: olympus_security
+  interval: 15s
+  rules:
+  - alert: HSMConnectionLost
+    expr: hsm_connection_status == 0
+    for: 10s
+    labels:
+      severity: critical
+    annotations:
+      summary: "HSM Connection Lost"
+      description: "Cannot connect to HSM for 10s"
+      runbook_url: "https://runbooks.olympus.internal/HSMDown"
+      impact: "Crypto operations failing."
+      cause: "Network issue or HSM fault."
+      auto_remediation: "None"
+
+  - alert: HSMOperationLatencyHigh
+    expr: hsm_operation_duration_seconds > 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "HSM Latency High"
+      description: "HSM operations taking > 100ms for 5m"
+      runbook_url: "https://runbooks.olympus.internal/HSMLatency"
+      impact: "Degradation of auth flow."
+      cause: "HSM load."
+      auto_remediation: "None"
+
+  - alert: VaultSealStatus
+    expr: vault_core_sealed == 1
+    for: 5s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Vault is Sealed"
+      description: "Vault sealed for 5s"
+      runbook_url: "https://runbooks.olympus.internal/VaultSealed"
+      impact: "Secrets unavailable, services cannot start/rotate."
+      cause: "Reboot or manual seal."
+      auto_remediation: "None (requires unseal keys)."
+
+  - alert: VaultTokenNearExpiry
+    expr: vault_token_ttl / vault_token_max_ttl < 0.1
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "Vault Token Expiring Soon"
+      description: "Token < 10% TTL left"
+      runbook_url: "https://runbooks.olympus.internal/VaultToken"
+      impact: "Service auth will fail."
+      cause: "Renewal agent stuck."
+      auto_remediation: "None"
+
+  - alert: StepCACertNearExpiry
+    expr: (step_ca_cert_not_after - time()) / 86400 < 2
+    for: 1h
+    labels:
+      severity: critical
+    annotations:
+      summary: "Certificate Expiring Soon"
+      description: "mTLS cert expires in < 2 days"
+      runbook_url: "https://runbooks.olympus.internal/CertExpiry"
+      impact: "mTLS connection failures."
+      cause: "Rotation script failed."
+      auto_remediation: "None"
+
+  - alert: CertificateRotationFailed
+    expr: step_ca_renewal_success == 0
+    for: 1h
+    labels:
+      severity: critical
+    annotations:
+      summary: "Certificate Rotation Failed"
+      description: "Renewal job failed"
+      runbook_url: "https://runbooks.olympus.internal/CertRotation"
+      impact: "Future cert expiry."
+      cause: "CA unreachable."
+      auto_remediation: "None"
+
+  - alert: AuditChainTampered
+    expr: audit_chain_integrity_status == 0
+    for: 0s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Audit Chain Tampered"
+      description: "Compliance violation: Audit chain broken"
+      runbook_url: "https://runbooks.olympus.internal/AuditTamper"
+      impact: "Legal/compliance breach."
+      cause: "Malicious internal action or disk corruption."
+      auto_remediation: "None"
+
+  - alert: GDPRErasureBacklog
+    expr: gdpr_erasure_queue_depth > 1000
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "GDPR Erasure Backlog"
+      description: "Queue depth > 1000 for 1h"
+      runbook_url: "https://runbooks.olympus.internal/GDPRBacklog"
+      impact: "Potential SLA breach."
+      cause: "Erasure worker stuck."
+      auto_remediation: "None"
+
+- name: olympus_cost
+  interval: 1h
+  rules:
+  - alert: HighCloudSpend
+    expr: aws_estimated_charges > budget_threshold
+    labels:
+      severity: info
+    annotations:
+      summary: "High Cloud Spend"
+      description: "Spend > budget"
+      runbook_url: "https://runbooks.olympus.internal/CloudSpend"
+      impact: "FinOps concern."
+      cause: "Overscaled resources."
+      auto_remediation: "None"
+
+  - alert: GPUWaste
+    expr: dcgm_gpu_utilization < 5
+    for: 168h
+    labels:
+      severity: info
+    annotations:
+      summary: "GPU Underutilized Long-Term"
+      description: "GPU utilization < 5% for 7 days"
+      runbook_url: "https://runbooks.olympus.internal/GPUWaste"
+      impact: "Right-sizing opportunity."
+      cause: "Overprovisioning."
+      auto_remediation: "None"
+# VERIFIED: Alert rules grouped correctly with thresholds, labels, and annotations as specified.

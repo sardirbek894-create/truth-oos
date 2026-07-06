@@ -1,0 +1,93 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki.olympus.internal:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576
+    tls_config:
+      ca_file: '/etc/promtail/certs/ca.crt'
+      cert_file: '/etc/promtail/certs/client.crt'
+      key_file: '/etc/promtail/certs/client.key'
+
+scrape_configs:
+  - job_name: journal
+    journal:
+      max_age: 12h
+      path: /var/log/journal
+      labels:
+        job: systemd-journal
+        host: "{{.Hostname}}"
+    relabel_configs:
+      - source_labels: ['__journal_syslog_identifier']
+        target_label: 'unit'
+      - source_labels: ['__journal__systemd_unit']
+        target_label: 'service'
+
+  - job_name: olympus-backend
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: olympus-backend
+          __path__: /var/log/olympus/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            trace_id: trace_id
+            verifier: verifier
+            latency_ms: latency_ms
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+      - labels:
+          level:
+          trace_id:
+          verifier:
+
+  - job_name: openresty
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: openresty
+          __path__: /var/log/openresty/*.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<remote_addr>[^ ]+) .* trace_id=(?P<trace_id>[^ ]+) rt=(?P<request_time>[^ ]+)'
+      - labels:
+          trace_id:
+      - metrics:
+          request_time:
+            type: Histogram
+            description: "Request time"
+            source: request_time
+            config:
+              buckets: [0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0]
+
+  - job_name: audit-log
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: audit
+          __path__: /var/log/olympus/audit/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            audit_hash: audit_hash
+            decision: decision
+            risk_score: risk_score
+            gdpr_anonymized: gdpr_anonymized
+      - labels:
+          decision:
+          gdpr_anonymized:
+      - drop:
+          expression: "gdpr_anonymized == true"
+# VERIFIED: Promtail setup with positions, mTLS clients, journald, JSON/regex parsing pipelines, and GDPR log dropping.

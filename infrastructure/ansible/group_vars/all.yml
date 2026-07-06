@@ -1,0 +1,13 @@
+---
+timezone: UTC
+ssh_port: 22
+ssh_key_only: true
+vault_addr: "https://vault.olympus.internal:8200"
+step_ca_url: "https://ca.olympus.internal:8443"
+step_ca_fingerprint: "{{ lookup('env', 'STEP_CA_FINGERPRINT') }}"
+internal_network: "10.0.0.0/16"
+password_auth: false
+root_login: false
+ufw_default_deny: true
+fail2ban_maxretry: 3
+fail2ban_bantime: 3600

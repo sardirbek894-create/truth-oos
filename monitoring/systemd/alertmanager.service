@@ -1,0 +1,25 @@
+[Unit]
+Description=Alertmanager notification router
+After=network-online.target prometheus.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alertmanager
+Group=alertmanager
+ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/data/alertmanager --cluster.listen-address="" --web.external-url=https://alertmanager.olympus.internal
+Restart=always
+RestartSec=5
+CPUQuota=100%
+MemoryMax=512M
+TasksMax=50
+OOMScoreAdjust=-500
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/alertmanager /etc/alertmanager
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+# VERIFIED: Alertmanager systemd unit with limits and read-write paths.

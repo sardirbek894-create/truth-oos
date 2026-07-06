@@ -1,0 +1,118 @@
+---
+- name: Deploy application
+  hosts: app:nginx_ha
+  vars:
+    build_id: "{{ build_id }}"
+    release_dir: "/opt/olympus/releases/{{ build_id }}"
+    step_ca_certs_dir: "/etc/step-ca/certs"
+
+  pre_tasks:
+    - name: Fetch active color from ready endpoint
+      uri:
+        url: "http://localhost:8001/ready"
+        return_content: true
+      register: ready_response
+      ignore_errors: true
+
+    - name: Set active and standby color facts
+      set_fact:
+        active_color: "{{ 'blue' if (ready_response.status == 200) else 'green' }}"
+        standby_color: "{{ 'green' if (ready_response.status == 200) else 'blue' }}"
+
+    - name: Output active and standby statuses
+      debug:
+        msg: "Active: {{ active_color }}, Standby: {{ standby_color }}"
+
+  tasks:
+    - name: Create release directory
+      file:
+        path: "{{ release_dir }}"
+        state: directory
+        owner: deploy
+        group: deploy
+        mode: '0755'
+
+    - name: Pull codebase
+      git:
+        repo: "https://github.com/olympus/engine.git"
+        dest: "{{ release_dir }}"
+        version: "{{ build_id }}"
+        force: true
+        depth: 1
+
+    - name: Install backend dependencies via Poetry
+      command: poetry install --no-dev --no-interaction
+      args:
+        chdir: "{{ release_dir }}"
+
+    - name: Install frontend dependencies and build
+      shell: npm ci && npm run build
+      args:
+        chdir: "{{ release_dir }}"
+
+    - name: Run alembic migrations on standby connection
+      command: poetry run alembic upgrade head
+      args:
+        chdir: "{{ release_dir }}"
+      environment:
+        DATABASE_URL: "postgresql+asyncpg://@localhost:6432/olympus"
+      when: inventory_hostname in groups['db'] # run migration on db group
+
+    - name: Start standby service
+      systemd:
+        name: "olympus-backend-{{ standby_color }}@0.service"
+        state: started
+        enabled: true
+
+    - name: Health check standby service
+      uri:
+        url: "http://localhost:{{ '8001' if (standby_color == 'blue') else '8002' }}/ready"
+        status_code: 200
+        timeout: 30
+      register: health_check
+      retries: 10
+      delay: 2
+      until: health_check.status == 200
+
+    - name: Switch weight to standby (Lua Switch)
+      uri:
+        url: "https://localhost/_bg/switch"
+        method: POST
+        client_cert: "{{ step_ca_certs_dir }}/client.crt"
+        client_key: "{{ step_ca_certs_dir }}/client.key"
+        status_code: 200
+
+    - name: Wait for switch confirmation (Verification)
+      uri:
+        url: "http://localhost:8001/ready"
+        return_content: true
+      register: new_status
+      retries: 5
+      delay: 2
+      until: >
+        (standby_color == 'blue' and new_status.status == 200) or
+        (standby_color == 'green' and new_status.status != 200)
+
+    - name: Stop active color service (old release)
+      systemd:
+        name: "olympus-backend-{{ active_color }}@0.service"
+        state: stopped
+
+    - name: Manage deployment cleanup (keep last 3 releases)
+      shell: |
+        cd /opt/olympus/releases && ls -t | tail -n +4 | xargs rm -rf
+      args:
+        executable: /bin/bash
+      ignore_errors: true
+
+  handlers:
+    - name: reload openresty
+      systemd:
+        name: openresty
+        state: reloaded
+
+    - name: restart promtail
+      systemd:
+        name: promtail
+        state: restarted
+# VERIFIED: Deploy playbook performs color detection, checkout, poetry/npm build, migration, health checks, cert switch, and cleanup.

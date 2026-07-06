@@ -1,0 +1,25 @@
+[Unit]
+Description=Step CA (internal PKI)
+Documentation=https://smallstep.com
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=step
+Group=step
+ExecStart=/usr/bin/step-ca /etc/step-ca/config/ca.json --password-file /etc/step-ca/secrets/password.txt
+Restart=always
+RestartSec=10
+CPUQuota=50%
+MemoryMax=256M
+TasksMax=50
+OOMScoreAdjust=-800
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/step-ca/db /var/log/step-ca
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

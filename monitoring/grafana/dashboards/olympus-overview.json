@@ -1,0 +1,142 @@
+{
+  "title": "Olympus Engine — Overview",
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "row",
+      "title": "API Health",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Request Rate",
+          "targets": [{"expr": "rate(http_requests_total[1m])"}]
+        },
+        {
+          "type": "gauge",
+          "title": "Error Rate",
+          "targets": [{"expr": "rate(http_requests_total{status=~\"5..\"}[1m]) / rate(http_requests_total[1m])"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "P99 Latency",
+          "targets": [{"expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))"}]
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Security",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "SANITY_FAIL Rate",
+          "targets": [{"expr": "rate(sanity_fail_total[5m])"}]
+        },
+        {
+          "type": "heatmap",
+          "title": "Jitter Mismatch",
+          "targets": [{"expr": "rate(jitter_mismatch_total[5m])"}]
+        },
+        {
+          "type": "stat",
+          "title": "HSM Health",
+          "targets": [{"expr": "hsm_connection_status"}]
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "HA Cluster",
+      "panels": [
+        {
+          "type": "stat",
+          "title": "etcd Quorum",
+          "targets": [{"expr": "etcd_server_has_leader"}]
+        },
+        {
+          "type": "stat",
+          "title": "Patroni Status",
+          "targets": [{"expr": "patroni_postgres_running"}]
+        },
+        {
+          "type": "stat",
+          "title": "Redis Sentinel",
+          "targets": [{"expr": "redis_sentinel_masters"}]
+        },
+        {
+          "type": "stat",
+          "title": "Keepalived VIP",
+          "targets": [{"expr": "keepalived_vip_status"}]
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Database",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "PgBouncer Pool",
+          "targets": [{"expr": "pgbouncer_pools_cl_active / pgbouncer_pools_cl_max"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "PostgreSQL Connections",
+          "targets": [{"expr": "pg_stat_activity_count"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "Replica Lag",
+          "targets": [{"expr": "patroni_replica_lag"}]
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "GPU",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "GPU Utilization",
+          "targets": [{"expr": "dcgm_gpu_utilization"}]
+        },
+        {
+          "type": "gauge",
+          "title": "GPU Memory",
+          "targets": [{"expr": "dcgm_gpu_memory_used / dcgm_gpu_memory_total"}]
+        },
+        {
+          "type": "heatmap",
+          "title": "GPU Temperature",
+          "targets": [{"expr": "dcgm_gpu_temp"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "Inference Latency",
+          "targets": [{"expr": "histogram_quantile(0.99, rate(gpu_inference_duration_seconds_bucket[5m]))"}]
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Business",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Verifications/min",
+          "targets": [{"expr": "rate(verification_total[1m])"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "Revenue/min",
+          "targets": [{"expr": "rate(verification_total{decision=\"PASS\"}[1m]) * 0.5"}]
+        },
+        {
+          "type": "bargauge",
+          "title": "Risk Score Distribution",
+          "targets": [{"expr": "histogram_quantile(0.5, decision_risk_score)"}]
+        }
+      ]
+    }
+  ]
+}

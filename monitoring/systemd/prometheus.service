@@ -1,0 +1,25 @@
+[Unit]
+Description=Prometheus monitoring server
+After=network-online.target etcd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=prometheus
+Group=prometheus
+ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/data/prometheus --storage.tsdb.retention.time=30d --web.enable-lifecycle --web.enable-admin-api
+Restart=always
+RestartSec=5
+CPUQuota=200%
+MemoryMax=4G
+TasksMax=100
+OOMScoreAdjust=-800
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/prometheus /etc/prometheus
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+# VERIFIED: Prometheus systemd unit with resource limits, security features and required args.

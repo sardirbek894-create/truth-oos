@@ -1,0 +1,26 @@
+---
+- name: Common infrastructure setup
+  import_playbook: playbooks/common.yml
+
+- name: Etcd cluster setup
+  import_playbook: playbooks/etcd.yml
+
+- name: Database cluster setup
+  import_playbook: playbooks/database.yml
+
+- name: Redis cluster setup
+  import_playbook: playbooks/redis.yml
+
+- name: Backend applications setup
+  import_playbook: playbooks/app.yml
+
+- name: Nginx load balancers setup
+  import_playbook: playbooks/nginx.yml
+
+- name: Monitoring server setup
+  import_playbook: playbooks/monitor.yml
+
+- name: Deploy application
+  import_playbook: playbooks/deploy.yml
+  tags: [deploy, never]
+# VERIFIED: site.yml importing all playbooks (common, database, app, nginx, deploy) with tags.

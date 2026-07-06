@@ -1,0 +1,38 @@
+---
+- name: Install etcd
+  apt:
+    name: etcd
+    state: present
+    update_cache: yes
+
+- name: Create etcd directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: etcd
+    group: etcd
+    mode: '0700'
+  loop:
+    - /var/lib/etcd
+    - /etc/etcd/certs
+
+- name: Generate etcd certificates from Step CA
+  shell: |
+    step ca certificate {{ etcd_name }} /etc/etcd/certs/server.crt /etc/etcd/certs/server.key \
+      --ca-url {{ step_ca_url }} --root /etc/step-ca/certs/root_ca.crt --not-after 24h
+  become: yes
+
+- name: Template etcd config
+  template:
+    src: etcd.conf.yml
+    dest: /etc/etcd/etcd.conf.yml
+    owner: etcd
+    group: etcd
+    mode: '0600'
+  notify: restart etcd
+
+- name: Enable and start etcd
+  systemd:
+    name: etcd
+    enabled: yes
+    state: started
