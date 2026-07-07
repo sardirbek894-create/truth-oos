@@ -1,0 +1,60 @@
+# =============================================================================
+# Olympus Engine v9 — Backend Python Dependencies
+# =============================================================================
+# Python 3.11+ required (memory constraint: type hints, asyncpg, performance)
+# Install: pip install -r requirements.txt
+# =============================================================================
+
+# --- Core ASGI / Web ---
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+gunicorn==23.0.0
+python-multipart==0.0.20
+
+# --- Configuration / Validation ---
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# --- Database (PostgreSQL via asyncpg, SQLAlchemy 2.0 async) ---
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+psycopg2-binary==2.9.10  # Alembic migrations
+
+# --- Redis (Sentinel + pipelines + Streams) ---
+redis[hiredis]==5.2.1
+
+# --- Security: HSM / Crypto / PQ ---
+cryptography==44.0.0
+ed25519==1.5.0
+pynacl==1.5.0
+libnacl==1.8.0
+pqcrypto==0.3.1  # ML-KEM-768 fallback (no HSM)
+pyjwt[crypto]==2.10.1
+
+# --- AI / ONNX (CPU-friendly stubs) ---
+numpy==2.2.1
+onnxruntime==1.20.1  # CPU-only; falls back gracefully
+
+# --- Observability ---
+prometheus-client==0.21.1
+prometheus-fastapi-instrumentator==7.0.0
+structlog==24.4.0
+
+# --- HTTP clients ---
+httpx==0.28.1
+aiohttp==3.11.10
+
+# --- Utils ---
+python-dotenv==1.0.1
+pyyaml==6.0.2
+orjson==3.10.12
+tenacity==9.0.0
+
+# --- HSM mock (development) ---
+# hsm_client is provided by app/utils/mock_hsm.py
+
+# =============================================================================
+# Test dependencies
+# =============================================================================
+-r requirements-test.txt

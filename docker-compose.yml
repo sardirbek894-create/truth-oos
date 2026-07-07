@@ -1,0 +1,256 @@
+# =============================================================================
+# Olympus Engine v9 — Development Stack (docker-compose)
+# =============================================================================
+# Single-host dev stack. NOT for production. For production, use the
+# Ansible playbooks in `infrastructure/ansible/` (Patroni HA, etcd
+# cluster, Redis Sentinel, Keepalived, multi-region).
+#
+# Services:
+#   postgres         — PostgreSQL 16 (single primary, dev-only)
+#   redis            — Redis 7 with Sentinel sidecar
+#   redis-sentinel   — Sentinel sidecar
+#   backend          — FastAPI app (mock HSM, mock ONNX)
+#   frontend         — React SPA via nginx
+#   openresty        — Gateway with mTLS termination (dev certs)
+#   prometheus       — Metrics (optional, profile: monitoring)
+#   grafana          — Dashboards (optional, profile: monitoring)
+# =============================================================================
+
+name: olympus
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-restart: &default-restart
+  restart: unless-stopped
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 (dev primary; Patroni HA is provisioned in prod)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: olympus-postgres
+    <<: [*default-restart, *default-logging]
+    environment:
+      POSTGRES_DB: olympus
+      POSTGRES_USER: olympus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-olympus}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/alembic/versions/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U olympus -d olympus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # PgBouncer (dev-only, single instance)
+  # ---------------------------------------------------------------------------
+  pgbouncer:
+    image: bitnami/pgbouncer:1.23.1
+    container_name: olympus-pgbouncer
+    <<: [*default-restart, *default-logging]
+    environment:
+      PGBOUNCER_DATABASE: olympus
+      PGBOUNCER_LISTEN_PORT: 6432
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USERNAME: olympus
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD:-olympus}
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: 1000
+      PGBOUNCER_DEFAULT_POOL_SIZE: 20
+      PGBOUNCER_AUTH_TYPE: md5
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Redis master + Sentinel sidecar
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: olympus-redis
+    <<: [*default-restart, *default-logging]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-sentinel:
+    image: redis:7-alpine
+    container_name: olympus-redis-sentinel
+    <<: [*default-restart, *default-logging]
+    command: >
+      sh -c "echo 'port 26379
+      sentinel monitor olympus-master redis 6379 1
+      sentinel down-after-milliseconds olympus-master 5000
+      sentinel failover-timeout olympus-master 30000
+      sentinel parallel-syncs olympus-master 1' > /etc/sentinel.conf &&
+      redis-sentinel /etc/sentinel.conf"
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "26379:26379"
+
+  # ---------------------------------------------------------------------------
+  # Backend (FastAPI)
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: olympus-backend
+    <<: [*default-restart, *default-logging]
+    environment:
+      OLYMPUS_ENV: development
+      OLYMPUS_HSM_MODE: mock
+      OLYMPUS_AI_MODE: mock
+      OLYMPUS_DB_DSN: postgresql+asyncpg://olympus:${POSTGRES_PASSWORD:-olympus}@pgbouncer:6432/olympus
+      OLYMPUS_REDIS_MASTER: redis://redis:6379/0
+      OLYMPUS_REDIS_SENTINEL: redis-sentinel:26379
+      OLYMPUS_VAULT_URL: http://vault:8200
+      OLYMPUS_LOG_LEVEL: INFO
+      OLYMPUS_MOCK_HSM_PIN: ${MOCK_HSM_PIN:-0000}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Frontend (React SPA via nginx)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: olympus-frontend
+    <<: [*default-restart, *default-logging]
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+  # ---------------------------------------------------------------------------
+  # OpenResty (gateway with blue/green + mTLS termination)
+  # ---------------------------------------------------------------------------
+  openresty:
+    image: openresty/openresty:1.25.3.1-alpine
+    container_name: olympus-openresty
+    <<: [*default-restart, *default-logging]
+    volumes:
+      - ./infrastructure/openresty/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./infrastructure/openresty/lua:/usr/local/openresty/lualib/olympus:ro
+      - ./infrastructure/openresty/snippets:/etc/nginx/snippets:ro
+      - ./infrastructure/openresty/sites-available:/etc/nginx/sites:ro
+      - ./infrastructure/openresty/upstreams:/etc/nginx/upstreams:ro
+      - openresty_logs:/var/log/openresty
+    ports:
+      - "443:443"
+      - "80:80"
+    depends_on:
+      - backend
+      - frontend
+
+  # ---------------------------------------------------------------------------
+  # Prometheus (metrics, optional via --profile monitoring)
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: olympus-prometheus
+    <<: [*default-restart, *default-logging]
+    profiles: ["monitoring"]
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+
+  # ---------------------------------------------------------------------------
+  # Grafana (dashboards, optional via --profile monitoring)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: olympus-grafana
+    <<: [*default-restart, *default-logging]
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  # ---------------------------------------------------------------------------
+  # Vault (dev mode, optional via --profile vault)
+  # ---------------------------------------------------------------------------
+  vault:
+    image: hashicorp/vault:1.18.1
+    container_name: olympus-vault
+    profiles: ["vault"]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: olympus-dev-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ADDR: http://0.0.0.0:8200
+    cap_add: ["IPC_LOCK"]
+    ports:
+      - "8200:8200"
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+  redis_data:
+  openresty_logs:
+  prometheus_data:
+  grafana_data:
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  default:
+    name: olympus-net
+    driver: bridge
